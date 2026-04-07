@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rizer AI - Your Personal Finance Coach</title>
+    <!-- Meta tags for SEO as per rules -->
+    <meta name="description" content="Rizer AI is a specialized finance assistant for Indian youth. Get advice on budgeting, investing, SIPs, and managing money in the Indian context.">
+    <meta name="keywords" content="finance, India, youth, savings, SIP, mutual funds, stock market, NSE, BSE">
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@400;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div id="app" class="app-container">
+        <!-- Floating Ticker -->
+        <div class="ticker-wrapper">
+            <div class="ticker-content" id="market-ticker">
+                <span class="ticker-item">NIFTY 50: 22,453.30 <span class="trend-up">▲ 0.8%</span></span>
+                <span class="ticker-item">SENSEX: 74,014.55 <span class="trend-up">▲ 0.75%</span></span>
+                <span class="ticker-item">USD/INR: ₹83.42 <span class="trend-down">▼ 0.05%</span></span>
+                <span class="ticker-item">GOLD (24K): ₹7,215/gm <span class="trend-up">▲ 1.2%</span></span>
+            </div>
+        </div>
+
+        <header class="main-header">
+            <div class="logo">
+                <span class="logo-icon">₹</span>
+                <h1 class="logo-text">Rizer <span class="accent">AI</span></h1>
+            </div>
+            <div class="header-tag">India's Youth Finance Coach</div>
+        </header>
+
+        <main class="chat-container">
+            <div class="chat-window" id="chat-window">
+                <div class="message bot-message fade-in">
+                    <div class="avatar">🤖</div>
+                    <div class="bubble">
+                        Namaste! I'm <strong>Rizer AI</strong>, your personal finance coach for the young Indian mindset! 💰
+                        <br><br>
+                        I can help you with saving, investing in SIPs/Mutual Funds, understanding types of banking, or even the basics of the stock market.
+                        <br><br>
+                        What's your financial goal today?
+                    </div>
+                </div>
+            </div>
+
+            <div class="input-area">
+                <div class="input-wrapper">
+                    <input type="text" id="user-input" placeholder="Ask me about SIPs, Budgeting, or Taxes..." autocomplete="off">
+                    <button id="send-btn">
+                        <svg viewBox="0 0 24 24" class="send-icon">
+                            <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path>
+                        </svg>
+                    </button>
+                </div>
+                <div class="quick-tags">
+                    <button class="tag">How to start an SIP? 📈</button>
+                    <button class="tag">Save ₹5000/mo 🏦</button>
+                    <button class="tag">Calculate Income Tax 🧾</button>
+                </div>
+            </div>
+        </main>
+
+        <footer class="legal-footer">
+            <p>Not a SEBI registered advisor. Information for educational purposes only. Always consult a professional before investing.</p>
+        </footer>
+    </div>
+    <script type="module" src="main.js"></script>
+</body>
+</html>
