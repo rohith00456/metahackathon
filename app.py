@@ -140,7 +140,30 @@ def ask_rizer(question):
         return "Sorry, I'm having trouble right now. Please try again in a moment! 💰"
 
 
-# ================= GRADIO UI =================
+# ================= FASTAPI & GRADIO UI =================
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+
+app = FastAPI()
+
+@app.post("/reset")
+async def reset():
+    return {"status": "ok", "message": "Environment reset successful"}
+
+@app.get("/reset")
+async def reset_get():
+    return {"status": "ok", "message": "Environment reset successful"}
+
+@app.post("/chat")
+async def chat_endpoint(request: Request):
+    try:
+        data = await request.json()
+        query = data.get("query", data.get("question", ""))
+        answer = ask_rizer(query)
+        return {"response": answer}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
 with gr.Blocks(theme=gr.themes.Soft()) as demo:
     gr.Markdown("# 🚀 Rizer AI 💰")
     gr.Markdown("### Your smart personal finance coach for Indian youth 🇮🇳")
@@ -160,4 +183,10 @@ with gr.Blocks(theme=gr.themes.Soft()) as demo:
     submit.click(ask_rizer, inputs=question, outputs=answer)
     clear.click(lambda: ("", ""), None, [question, answer])
 
-demo.launch()
+app = gr.mount_gradio_app(app, demo, path="/")
+
+if __name__ == "__main__":
+    import uvicorn
+    import os
+    port = int(os.environ.get("PORT", 7860))
+    uvicorn.run(app, host="0.0.0.0", port=port)
