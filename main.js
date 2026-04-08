@@ -1,4 +1,13 @@
 
+// ========================
+// Utility: HTML escaping to prevent XSS
+// ========================
+function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
 const chatWindow = document.getElementById('chat-window');
 const userInput = document.getElementById('user-input');
 const sendBtn = document.getElementById('send-btn');
@@ -89,6 +98,12 @@ async function sendMessage() {
     const text = userInput.value.trim();
     if (!text) return;
 
+    // Input length validation (#7)
+    if (text.length > 2000) {
+        appendMessage("Please keep your question under 2000 characters.", 'bot');
+        return;
+    }
+
     appendMessage(text, 'user');
     userInput.value = '';
 
@@ -97,16 +112,30 @@ async function sendMessage() {
     sendBtn.disabled = true;
 
     // Show thinking indicator with live elapsed-time counter
+    // Built via DOM APIs to avoid innerHTML pattern (#2)
     const typingDiv = document.createElement('div');
     typingDiv.className = 'message bot-message fade-in';
     typingDiv.id = 'typing-indicator';
-    typingDiv.innerHTML = `
-        <div class="avatar">🤖</div>
-        <div class="bubble typing-bubble">
-            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
-            &nbsp; <span id="thinking-text">Connecting to Rizer AI...</span>
-        </div>
-    `;
+
+    const avatar = document.createElement('div');
+    avatar.className = 'avatar';
+    avatar.textContent = '🤖';
+
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble typing-bubble';
+    for (let i = 0; i < 3; i++) {
+        const dot = document.createElement('span');
+        dot.className = 'dot';
+        bubble.appendChild(dot);
+    }
+    bubble.appendChild(document.createTextNode('\u00A0 '));
+    const thinkingSpan = document.createElement('span');
+    thinkingSpan.id = 'thinking-text';
+    thinkingSpan.textContent = 'Connecting to Rizer AI...';
+    bubble.appendChild(thinkingSpan);
+
+    typingDiv.appendChild(avatar);
+    typingDiv.appendChild(bubble);
     chatWindow.appendChild(typingDiv);
     chatWindow.scrollTop = chatWindow.scrollHeight;
 
@@ -151,8 +180,9 @@ function appendMessage(text, sender) {
     const bubble = document.createElement('div');
     bubble.className = 'bubble';
 
-    // Render markdown-style: **bold**, *italic*, numbered lists, bullet points
-    let formatted = text
+    // SECURITY FIX (#1): Escape HTML entities FIRST to prevent XSS,
+    // then apply safe markdown-style formatting
+    let formatted = escapeHtml(text)
         .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
         .replace(/\*(.*?)\*/g, '<em>$1</em>')
         .replace(/\n(\d+\.\s)/g, '<br><strong>$1</strong>')

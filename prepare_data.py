@@ -3,8 +3,9 @@ import os
 import pdfplumber
 import openpyxl
 
-PDF_FOLDER  = r"F:\chat gpt data"
-OUTPUT_FILE = r"F:\chat gpt data\rizer_dataset.jsonl"
+# FIX #11: Use env variable / relative path instead of hardcoded Windows path
+PDF_FOLDER  = os.environ.get("DATA_DIR", os.path.join(os.path.dirname(__file__), "data"))
+OUTPUT_FILE = os.path.join(PDF_FOLDER, "rizer_dataset.jsonl")
 CHUNK_SIZE  = 512
 
 def extract_pdf(path):

@@ -1,3 +1,23 @@
 node_modules/
 __pycache__/
 *.pyc
+
+# Environment & secrets
+.env
+.env.*
+
+# Training data
+*.jsonl
+
+# Build artifacts
+dist/
+build/
+
+# Model weights
+*.pth
+*.bin
+*.safetensors
+
+# OS files
+.DS_Store
+Thumbs.db

@@ -1,10 +1,17 @@
 import gradio as gr
 import os
+import re
+import logging
+
+logger = logging.getLogger(__name__)
 
 # ================= API KEYS =================
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 HF_TOKEN = os.getenv("HF_TOKEN")
+
+# ================= CONSTANTS =================
+MAX_INPUT_LENGTH = 2000
 
 # ================= SYSTEM PROMPT =================
 SYSTEM_PROMPT = """You are Rizer AI, an expert personal finance coach for Indian youth aged 13-28.
@@ -33,7 +40,9 @@ FINANCE_KEYWORDS = [
 ]
 
 def is_finance_question(q):
-    return any(w in q.lower() for w in FINANCE_KEYWORDS)
+    # FIX #9: Use word-boundary matching to avoid false positives
+    # e.g. "card" no longer matches "discard" or "cardboard"
+    return any(re.search(rf'\b{re.escape(w)}\b', q, re.IGNORECASE) for w in FINANCE_KEYWORDS)
 
 def preprocess(question):
     q = question.lower()
@@ -61,8 +70,13 @@ def ask_groq(question):
 def ask_gemini(question):
     import google.generativeai as genai
     genai.configure(api_key=GEMINI_API_KEY)
-    model = genai.GenerativeModel("gemini-pro")
-    response = model.generate_content(SYSTEM_PROMPT + "\n\nUser Question: " + question)
+    # FIX #5: Use separate system_instruction to prevent prompt injection.
+    # Previously the user input was concatenated directly into the system prompt string.
+    model = genai.GenerativeModel(
+        "gemini-pro",
+        system_instruction=SYSTEM_PROMPT
+    )
+    response = model.generate_content(question)
     return response.text
 
 # ================= HF FALLBACK — strong prompt =================
@@ -72,13 +86,23 @@ from huggingface_hub import login
 if HF_TOKEN:
     login(token=HF_TOKEN)
 
-hf_model = pipeline(
-    "text-generation",
-    model="rohith2006345/rizer-finance-ai",
-    token=HF_TOKEN
-)
+# FIX #10: Lazy-load the HF model. Previously it loaded at import time,
+# blocking startup and crashing the app if HF_TOKEN was missing.
+_hf_model = None
+
+def get_hf_model():
+    global _hf_model
+    if _hf_model is None:
+        logger.info("Loading HuggingFace model (first request)...")
+        _hf_model = pipeline(
+            "text-generation",
+            model="rohith2006345/rizer-finance-ai",
+            token=HF_TOKEN
+        )
+    return _hf_model
 
 def ask_hf(question):
+    hf_model = get_hf_model()
     # Very directive prompt to keep the model on track
     prompt = (
         "You are Rizer AI, a finance coach for Indian youth. "
@@ -113,6 +137,10 @@ def ask_rizer(question):
     if not question.strip():
         return "Please ask a question 😊"
 
+    # FIX #7: Input length validation
+    if len(question) > MAX_INPUT_LENGTH:
+        return f"Please keep your question under {MAX_INPUT_LENGTH} characters."
+
     if not is_finance_question(question):
         return "I'm Rizer AI 💰 — I only answer finance questions. Ask me about investing, saving, SIP, stocks, taxes, budgeting, etc.!"
 
@@ -143,8 +171,19 @@ def ask_rizer(question):
 # ================= FASTAPI & GRADIO UI =================
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
+
+# FIX #4: Add CORS middleware with explicit origin allowlist.
+# Replace the list below with your actual frontend domain(s).
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
+)
 
 @app.post("/reset")
 async def reset():
@@ -162,7 +201,9 @@ async def chat_endpoint(request: Request):
         answer = ask_rizer(query)
         return {"response": answer}
     except Exception as e:
-        return JSONResponse(status_code=500, content={"error": str(e)})
+        # FIX #3: Never leak internal error details to clients
+        logger.exception("Chat endpoint error")
+        return JSONResponse(status_code=500, content={"error": "Internal server error. Please try again later."})
 
 with gr.Blocks(theme=gr.themes.Soft()) as demo:
     gr.Markdown("# 🚀 Rizer AI 💰")
