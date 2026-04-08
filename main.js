@@ -4,113 +4,190 @@ const userInput = document.getElementById('user-input');
 const sendBtn = document.getElementById('send-btn');
 const tags = document.querySelectorAll('.tag');
 
-// User profile state
-let userProfile = {
-    age: null,
-    income: null,
-    goal: null
-};
-
 // Finance Keywords for Gatekeeping
 const FINANCE_KEYWORDS = [
-    'money', 'finance', 'invest', 'save', 'budget', 'stock', 'share', 'market', 'nifty', 'sensex', 
-    'bank', 'upi', 'sip', 'mutual', 'fund', 'fd', 'rd', 'tax', 'gst', 'income', 'credit', 'loan', 
-    'score', 'insurance', 'crypto', 'bitcoin', 'scholarship', 'student', 'salary', 'wealth', 
-    'rupee', 'profit', 'loss', 'portfolio', 'trading', 'broker', 'sebi', 'rbi', 'bank', 'card'
+    'money', 'finance', 'invest', 'save', 'budget', 'stock', 'share', 'market', 'nifty', 'sensex',
+    'bank', 'upi', 'sip', 'mutual', 'fund', 'fd', 'rd', 'tax', 'gst', 'income', 'credit', 'loan',
+    'score', 'insurance', 'crypto', 'bitcoin', 'scholarship', 'student', 'salary', 'wealth',
+    'rupee', 'profit', 'loss', 'portfolio', 'trading', 'broker', 'sebi', 'rbi', 'card', 'emi',
+    'nps', 'ppf', 'elss', 'sensex', 'gold', 'bond', 'dividend', 'return', 'riskcard'
 ];
 
 const OFF_TOPIC_REPLY = "I'm Rizer AI, your personal finance coach! I can only help with money and finance topics. Ask me anything about saving, investing, or managing money! 💰";
 
-// Handle Send
-function sendMessage() {
+const BASE_URL = "https://rohith2006345-rizer-rohith.hf.space";
+
+// ========================
+// Gradio 5 API — two-step
+// ========================
+async function callRizerAPI(question) {
+    // Step 1: POST to submit the job → get event_id
+    const submitRes = await fetch(`${BASE_URL}/gradio_api/call/ask_rizer`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ data: [question] })
+    });
+
+    if (!submitRes.ok) {
+        throw new Error(`Submit failed: ${submitRes.status}`);
+    }
+
+    const submitJson = await submitRes.json();
+    const eventId = submitJson.event_id;
+
+    if (!eventId) throw new Error("No event_id in response");
+
+    // Step 2: GET result via Server-Sent Events stream
+    return new Promise((resolve, reject) => {
+        const eventSource = new EventSource(
+            `${BASE_URL}/gradio_api/call/ask_rizer/${eventId}`
+        );
+
+        let timeout = setTimeout(() => {
+            eventSource.close();
+            reject(new Error("Timeout waiting for response"));
+        }, 300000); // 5-minute timeout (model may need to warm up on first call)
+
+        eventSource.addEventListener("complete", (event) => {
+            clearTimeout(timeout);
+            eventSource.close();
+            try {
+                const data = JSON.parse(event.data);
+                // data is an array, first element is the answer
+                resolve(data[0]);
+            } catch {
+                reject(new Error("Failed to parse response"));
+            }
+        });
+
+        eventSource.addEventListener("error", (event) => {
+            clearTimeout(timeout);
+            eventSource.close();
+            // If the stream throws but event.data has our answer, try parsing
+            if (event.data) {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data && data[0]) { resolve(data[0]); return; }
+                } catch { }
+            }
+            reject(new Error("Stream error"));
+        });
+
+        // Some Gradio versions send 'generating' then 'complete'
+        eventSource.onmessage = (event) => {
+            if (!event.data || event.data === "null") return;
+            // ignore heartbeat/generating events unless they look like final answers
+        };
+    });
+}
+
+// ========================
+//    UI Logic
+// ========================
+
+async function sendMessage() {
     const text = userInput.value.trim();
     if (!text) return;
 
-    // Append User Message
     appendMessage(text, 'user');
     userInput.value = '';
 
-    // Process Bot Response
-    setTimeout(() => {
-        const response = generateAIResponse(text.toLowerCase());
+    // Disable input while waiting
+    userInput.disabled = true;
+    sendBtn.disabled = true;
+
+    // Show thinking indicator with live elapsed-time counter
+    const typingDiv = document.createElement('div');
+    typingDiv.className = 'message bot-message fade-in';
+    typingDiv.id = 'typing-indicator';
+    typingDiv.innerHTML = `
+        <div class="avatar">🤖</div>
+        <div class="bubble typing-bubble">
+            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+            &nbsp; <span id="thinking-text">Connecting to Rizer AI...</span>
+        </div>
+    `;
+    chatWindow.appendChild(typingDiv);
+    chatWindow.scrollTop = chatWindow.scrollHeight;
+
+    // Live countdown text to reassure user
+    let elapsed = 0;
+    const thinkingInterval = setInterval(() => {
+        elapsed++;
+        const el = document.getElementById('thinking-text');
+        if (!el) { clearInterval(thinkingInterval); return; }
+        if (elapsed < 5) el.textContent = "Connecting to Rizer AI...";
+        else if (elapsed < 15) el.textContent = `Rizer AI is thinking... (${elapsed}s)`;
+        else el.textContent = `Model warming up, please wait... (${elapsed}s)`;
+    }, 1000);
+
+    try {
+        const response = await generateAIResponse(text);
+        clearInterval(thinkingInterval);
+        const indicator = document.getElementById('typing-indicator');
+        if (indicator) indicator.remove();
         appendMessage(response, 'bot');
-    }, 600);
+    } catch (error) {
+        clearInterval(thinkingInterval);
+        const indicator = document.getElementById('typing-indicator');
+        if (indicator) indicator.remove();
+        appendMessage("I'm sorry, I'm having trouble connecting right now. Please try again in a moment! 🌐", 'bot');
+        console.error("API Error:", error);
+    } finally {
+        userInput.disabled = false;
+        sendBtn.disabled = false;
+        userInput.focus();
+    }
 }
 
 function appendMessage(text, sender) {
     const msgDiv = document.createElement('div');
-    msgDiv.className = `message ${sender}-message`;
-    
+    msgDiv.className = `message ${sender}-message fade-in`;
+
     const avatar = document.createElement('div');
     avatar.className = 'avatar';
     avatar.textContent = sender === 'bot' ? '🤖' : '👤';
 
     const bubble = document.createElement('div');
     bubble.className = 'bubble';
-    bubble.innerHTML = text.replace(/\n/g, '<br>');
+
+    // Render markdown-style: **bold**, *italic*, numbered lists, bullet points
+    let formatted = text
+        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.*?)\*/g, '<em>$1</em>')
+        .replace(/\n(\d+\.\s)/g, '<br><strong>$1</strong>')
+        .replace(/\n[-•]\s/g, '<br>• ')
+        .replace(/\n/g, '<br>');
+
+    bubble.innerHTML = formatted;
 
     msgDiv.appendChild(avatar);
     msgDiv.appendChild(bubble);
     chatWindow.appendChild(msgDiv);
-    
-    // Scroll to bottom
     chatWindow.scrollTop = chatWindow.scrollHeight;
 }
 
-function generateAIResponse(input) {
-    // 1. Check for off-topic (Gatekeeping)
-    const isFinance = FINANCE_KEYWORDS.some(kw => input.includes(kw));
-    
-    // Special check for intro/greetings
-    const GREETINGS = ['hi', 'hello', 'namaste', 'hey', 'rizz', 'rizer'];
-    const isGreeting = GREETINGS.some(g => input.startsWith(g) || input === g);
+async function generateAIResponse(input) {
+    const lowerInput = input.toLowerCase();
+
+    // Gatekeeping
+    const isFinance = FINANCE_KEYWORDS.some(kw => lowerInput.includes(kw));
+    const GREETINGS = ['hi', 'hello', 'namaste', 'hey', 'rizz', 'rizer', 'good morning', 'good evening'];
+    const isGreeting = GREETINGS.some(g => lowerInput.startsWith(g) || lowerInput === g);
 
     if (!isFinance && !isGreeting) {
         return OFF_TOPIC_REPLY;
     }
 
-    // 2. Profile tracking (Simple regex/checks)
-    if (input.includes('age') || input.match(/\d{2}/)) {
-        const ageMatch = input.match(/\d{2}/);
-        if (ageMatch) {
-            const age = parseInt(ageMatch[0]);
-            if (age >= 13 && age <= 28) {
-                userProfile.age = age;
-                return `Got it! You're ${age}. Since you're in the 13-28 bracket, we can plan your finances early. Are you a student or starting your first job?`;
-            }
-        }
-    }
-
-    if (input.includes('income') || input.includes('earn') || input.includes('salary')) {
-        return "That's good to know! Knowing your income helps me suggest better budgeting splits (like the 50/30/20 rule). What's your main financial goal? Buying a gadget, higher education, or just long-term wealth?";
-    }
-
-    // 3. Finance Queries (Simple logic for demo)
-    if (input.includes('sip')) {
-        return "Systematic Investment Plan (SIP) is like a subscription to wealth! 📈 Even ₹500/month in an Index Fund can grow significantly over 10 years thanks to compounding. Want to see how much you could make?";
-    }
-
-    if (input.includes('stock') || input.includes('market')) {
-        return "The Indian Stock Market (NSE/BSE) is where you buy parts of companies. For beginners, I recommend Nifty 50 Index Funds—they are less risky than picking individual stocks. Remember, I don't give specific stock tips! 🚫📈";
-    }
-
-    if (input.includes('tax')) {
-        return "Income Tax in India has two regimes now: Old and New. If you're a student or early earner, you likely won't pay much, but it's good to track your Form 16! 🧾";
-    }
-
-    if (input.includes('budget') || input.includes('save')) {
-        return "Budgeting is key! 🏦 Try the **50-30-20 rule**: 50% for Needs, 30% for Wants, and 20% for Savings/Investments. Want me to help you split a specific amount?";
-    }
-
     if (isGreeting) {
-        return "Namaste! I'm Rizer AI. I'm here to help you navigate the world of Indian finance. What's on your mind? (SIPs, Taxes, Savings, or even your first Credit Card?)";
+        return "Namaste! 🙏 I'm Rizer AI — your personal finance coach for the Indian youth. Ask me anything about SIPs, mutual funds, budgeting, taxes, or the stock market!";
     }
 
-    // Fallback finance response
-    return "That sounds like a great finance topic! As your older sibling in finance, I'd say the best time to start is now. Could you tell me more about what you're looking for?";
+    // Call the real API using Gradio 5 two-step pattern
+    return await callRizerAPI(input);
 }
 
-// Market ticker "Dynamicness"
+// Market ticker animation
 function updateTicker() {
     const items = document.querySelectorAll('.ticker-item');
     items.forEach(item => {
@@ -127,7 +204,7 @@ function updateTicker() {
 // Event Listeners
 sendBtn.addEventListener('click', sendMessage);
 userInput.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') sendMessage();
+    if (e.key === 'Enter' && !e.shiftKey) sendMessage();
 });
 
 tags.forEach(tag => {
@@ -138,4 +215,4 @@ tags.forEach(tag => {
 });
 
 setInterval(updateTicker, 3000);
-console.log('Rizer AI initialized 🚀');
+console.log('Rizer AI initialized 🚀 — Connected to HF Space API');

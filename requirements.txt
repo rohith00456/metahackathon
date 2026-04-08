@@ -1,8 +1,8 @@
-flask
-flask-cors
 transformers
 torch
+gradio
 huggingface_hub
 accelerate
-bitsandbytes
 peft
+fastapi
+uvicorn
